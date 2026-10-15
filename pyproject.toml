@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "therabee-safety"
+version = "0.1.0"
+description = "Dependency-free crisis phrase detection and safety decision primitives extracted from TheraBee"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Finn Sommer" },
+  { name = "Olutayo Oyewusi" },
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/therabee_safety"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
