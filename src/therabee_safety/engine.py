@@ -71,14 +71,19 @@ class SafetyEngine:
         classifier_error: str | None = None
         if self._classifier is not None and len(request.message.strip()) > CLASSIFIER_MIN_LENGTH_EXCLUSIVE:
             attempted = True
+            reason: str | None = None
             try:
                 result = self._classifier.classify(request.message)
-                if result.crisis:
+                crisis = result.crisis
+                if not isinstance(crisis, bool):
+                    raise ValueError("classifier result must contain a boolean 'crisis'")
+                if crisis:
                     reason = f"classifier: {result.reason or 'flagged as crisis'}"
-                    self._storage.put(new_lock(request.subject_id, request.session_id, reason, request.message))
-                    return self._crisis_decision(reason, classifier_attempted=True)
             except Exception as exc:  # Provider and parse failures intentionally fail open.
-                classifier_error = f"{type(exc).__name__}: {exc}"
+                classifier_error = type(exc).__name__
+            if reason is not None:
+                self._storage.put(new_lock(request.subject_id, request.session_id, reason, request.message))
+                return self._crisis_decision(reason, classifier_attempted=True)
 
         return SafetyDecision(
             signal_detected=False,

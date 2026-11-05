@@ -5,6 +5,7 @@ import pytest
 from therabee_safety import (
     Classification,
     InMemoryLockStorage,
+    JsonCallableClassifier,
     RecommendedAction,
     SafetyEngine,
     ScanRequest,
@@ -71,15 +72,51 @@ def test_classifier_hit_is_stored() -> None:
     assert storage.get("synthetic-user") is not None
 
 
-def test_classifier_error_fails_open_and_is_visible() -> None:
-    classifier = StubClassifier(error=RuntimeError("synthetic outage"))
-    decision = SafetyEngine(InMemoryLockStorage(), classifier).evaluate(
+@pytest.mark.parametrize("error_type", [RuntimeError, TimeoutError])
+def test_classifier_error_fails_open_and_is_visible(error_type: type[Exception]) -> None:
+    classifier = StubClassifier(error=error_type("synthetic provider detail"))
+    storage = InMemoryLockStorage()
+    decision = SafetyEngine(storage, classifier).evaluate(
         request("A neutral synthetic statement long enough.")
     )
     assert not decision.signal_detected
     assert decision.classifier_attempted
-    assert "RuntimeError" in decision.classifier_error
+    assert decision.classifier_error == error_type.__name__
     assert decision.recommended_action is RecommendedAction.CONTINUE
+    assert storage.get("synthetic-user") is None
+
+
+@pytest.mark.parametrize("response,expected_error", [
+    ('{"crisis": false}', None),
+    ('{}', "ValueError"),
+    ('{"crisis":', "JSONDecodeError"),
+])
+def test_engine_distinguishes_classifier_errors_from_negative_results(
+    response: str, expected_error: str | None
+) -> None:
+    classifier = JsonCallableClassifier(lambda _: response)
+    storage = InMemoryLockStorage()
+    decision = SafetyEngine(storage, classifier).evaluate(
+        request("A neutral synthetic statement long enough.")
+    )
+    assert decision.classifier_attempted
+    assert decision.classifier_error == expected_error
+    assert not decision.signal_detected
+    assert decision.recommended_action is RecommendedAction.CONTINUE
+    assert storage.get("synthetic-user") is None
+
+
+def test_custom_classifier_requires_a_boolean_crisis_flag() -> None:
+    classifier = StubClassifier(Classification("false"))  # type: ignore[arg-type]
+    storage = InMemoryLockStorage()
+    decision = SafetyEngine(storage, classifier).evaluate(
+        request("A neutral synthetic statement long enough.")
+    )
+    assert decision.classifier_attempted
+    assert decision.classifier_error == "ValueError"
+    assert not decision.signal_detected
+    assert decision.recommended_action is RecommendedAction.CONTINUE
+    assert storage.get("synthetic-user") is None
 
 
 @pytest.mark.parametrize("text", ["x" * 20, "  " + "x" * 20 + "  "])
@@ -121,7 +158,12 @@ class FailingStorage:
         raise OSError("synthetic remove failure")
 
 
-@pytest.mark.parametrize("operation,message", [("get", "hello"), ("put", "I want to die")])
+@pytest.mark.parametrize("operation,message", [
+    ("get", "hello"),
+    ("put", "I want to die"),
+    ("put", "A neutral synthetic statement long enough."),
+])
 def test_storage_failures_propagate(operation: str, message: str) -> None:
+    classifier = StubClassifier(Classification(True, "synthetic signal"))
     with pytest.raises(OSError, match="synthetic"):
-        SafetyEngine(FailingStorage(operation)).evaluate(request(message))
+        SafetyEngine(FailingStorage(operation), classifier).evaluate(request(message))

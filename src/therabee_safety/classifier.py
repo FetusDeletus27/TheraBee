@@ -67,7 +67,7 @@ class JsonCallableClassifier:
         if content.startswith("```"):
             content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         data = json.loads(content)
-        if not isinstance(data, dict) or not isinstance(data.get("crisis", False), bool):
+        if not isinstance(data, dict) or not isinstance(data.get("crisis"), bool):
             raise ValueError("classifier response must contain a boolean 'crisis'")
         reason = data.get("reason")
-        return Classification(data.get("crisis", False), str(reason) if reason is not None else None)
+        return Classification(data["crisis"], str(reason) if reason is not None else None)

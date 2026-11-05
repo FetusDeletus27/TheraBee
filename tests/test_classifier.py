@@ -8,6 +8,7 @@ def test_json_adapter_accepts_fenced_json() -> None:
     assert result.crisis and result.reason == "synthetic"
 
 
-def test_json_adapter_rejects_invalid_shape() -> None:
-    with pytest.raises(ValueError):
-        JsonCallableClassifier(lambda _: '{"crisis": "yes"}').classify("text")
+@pytest.mark.parametrize("response", ['{"crisis": "yes"}', '{"reason": "synthetic"}', '[]'])
+def test_json_adapter_rejects_missing_or_non_boolean_crisis_flag(response: str) -> None:
+    with pytest.raises(ValueError, match="boolean 'crisis'"):
+        JsonCallableClassifier(lambda _: response).classify("text")

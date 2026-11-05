@@ -53,11 +53,13 @@ Run `python examples/synthetic_example.py` after installation for a synthetic de
 
 Implement `CrisisClassifier.classify(message) -> Classification`, or wrap a caller with `JsonCallableClassifier`. The caller receives the retained source prompt and returns JSON text. The package does not select a provider, model, transport, credentials, or paid service.
 
-The classifier is attempted only when `len(message.strip()) > 20`, preserving the source threshold. Classifier exceptions and malformed JSON are reported in `SafetyDecision.classifier_error` and otherwise fail open, preserving the source monitor's effective behavior. This means processing continues and no lock recommendation is stored. Integrators should explicitly assess whether that failure policy is acceptable.
+The classifier is attempted only when `len(message.strip()) > 20`. JSON responses must include a boolean `crisis` field. Provider exceptions, including timeouts raised by the caller, and invalid classifier responses set `classifier_attempted=True` and report the exception type in `SafetyDecision.classifier_error`. The decision excludes the exception message, which may contain sensitive provider or user data. A successful `{"crisis": false}` leaves `classifier_error` unset.
+
+On a classifier error, the engine recommends `CONTINUE` and stores no lock. The host can check `classifier_error` and apply its own fallback.
 
 ### Integration contract
 
-`SafetyEngine.evaluate` reads lock state first. An existing lock or a new signal returns `SHOW_RESOURCES_AND_RESTRICT_FLOW` and the resource text. The host application must implement any restriction, navigation, notification, audit, authentication, persistence, or escalation. Storage read and write exceptions propagate so an infrastructure failure is not mistaken for a safe result.
+`SafetyEngine.evaluate` reads lock state first. An existing lock or a new signal returns `SHOW_RESOURCES_AND_RESTRICT_FLOW` and the resource text. The host application must implement any restriction, navigation, notification, audit, authentication, persistence, or escalation. Storage read and write exceptions propagate, including failed writes after a positive classifier result.
 
 ## Behavior changes from the application
 
