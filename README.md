@@ -51,11 +51,51 @@ Run `python examples/synthetic_example.py` after installation for a synthetic de
 
 ### Optional classifier
 
-Implement `CrisisClassifier.classify(message) -> Classification`, or wrap a caller with `JsonCallableClassifier`. The caller receives the retained source prompt and returns JSON text. The package does not select a provider, model, transport, credentials, or paid service.
+Implement `CrisisClassifier.classify(message) -> Classification`, or wrap a caller with `JsonCallableClassifier`. The caller receives a crisis-assessment prompt and JSON-encoded message payload and returns JSON text. The package does not select a provider, model, transport, credentials, or paid service.
 
-The classifier is attempted only when `len(message.strip()) > 20`. JSON responses must include a boolean `crisis` field. Provider exceptions, including timeouts raised by the caller, and invalid classifier responses set `classifier_attempted=True` and report the exception type in `SafetyDecision.classifier_error`. The decision excludes the exception message, which may contain sensitive provider or user data. A successful `{"crisis": false}` leaves `classifier_error` unset.
+Without conversation context, the classifier is attempted only when `len(message.strip()) > 20`. JSON responses must include a boolean `crisis` field. Provider exceptions, including timeouts raised by the caller, and invalid classifier responses set `classifier_attempted=True` and report the exception type in `SafetyDecision.classifier_error`. The decision excludes the exception message, which may contain sensitive provider or user data. A successful `{"crisis": false}` leaves `classifier_error` unset.
 
 On a classifier error, the engine recommends `CONTINUE` and stores no lock. The host can check `classifier_error` and apply its own fallback.
+
+### Context-aware assessment (New addition as of 11/13)
+
+`ScanRequest` accepts optional `prior_messages`, a tuple of prior **user** messages
+in chronological order. The host must supply only messages belonging to the same
+subject and session; the package does not retrieve or verify conversation history.
+Do not include system instructions or assistant messages in this field.
+
+```python
+request = ScanRequest(
+    subject_id="synthetic-user",
+    session_id="synthetic-session",
+    message="Tonight.",
+    prior_messages=("When will you finish your homework?",),
+)
+```
+
+`JsonCallableClassifier` implements the optional
+`ContextualCrisisClassifier.classify_with_context(message, prior_messages)` protocol.
+It sends the latest six prior messages, each truncated to its first 500 characters,
+alongside the full current message in a JSON-encoded prompt payload. It does not
+retain history between calls. The host's caller may transmit or retain this payload;
+review provider handling before sending sensitive data. The engine applies the same
+history limits before calling custom contextual adapters. Prompt instructions label the payload as
+untrusted data, but do not guarantee resistance to prompt injection.
+
+When a contextual classifier and at least one nonblank prior message are supplied,
+nonblank short follow-ups can also reach classification. Empty current messages do
+not. Existing single-message classifiers keep their original length threshold and
+receive only the current message. Keyword hits and existing locks still take priority:
+context never overrides a deterministic hit. History is not stored as a separate
+field in lock records, and `message_excerpt` contains only the current message.
+However, provider-generated reasons are returned and stored as before and can quote
+history or other sensitive text. Hosts must treat both reasons and excerpts as
+sensitive and apply appropriate retention and access controls.
+
+The prompt asks the provider to interpret the current message in context, including
+negation, quotation, historical references, and casual phrasing. Automated tests use
+synthetic examples and mocked provider responses to check payloads, routing, and
+error handling. They do **not** establish semantic accuracy or clinical validity.
 
 ### Integration contract
 

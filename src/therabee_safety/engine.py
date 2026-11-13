@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from .classifier import CrisisClassifier
+from .classifier import ContextualCrisisClassifier, CrisisClassifier, bounded_context
 from .scanner import keyword_scan
 from .storage import LockStorage, new_lock
 
@@ -32,6 +32,7 @@ class ScanRequest:
     subject_id: str
     session_id: str
     message: str
+    prior_messages: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,11 +70,22 @@ class SafetyEngine:
 
         attempted = False
         classifier_error: str | None = None
-        if self._classifier is not None and len(request.message.strip()) > CLASSIFIER_MIN_LENGTH_EXCLUSIVE:
+        contextual = isinstance(self._classifier, ContextualCrisisClassifier)
+        history = bounded_context(request.prior_messages) if contextual else ()
+        has_context = any(text.strip() for text in history)
+        if self._classifier is not None and (
+            len(request.message.strip()) > CLASSIFIER_MIN_LENGTH_EXCLUSIVE
+            or (bool(request.message.strip()) and has_context)
+        ):
             attempted = True
             reason: str | None = None
             try:
-                result = self._classifier.classify(request.message)
+                if contextual and history:
+                    result = self._classifier.classify_with_context(
+                        request.message, history
+                    )
+                else:
+                    result = self._classifier.classify(request.message)
                 crisis = result.crisis
                 if not isinstance(crisis, bool):
                     raise ValueError("classifier result must contain a boolean 'crisis'")
