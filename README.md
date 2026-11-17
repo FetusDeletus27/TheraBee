@@ -97,6 +97,15 @@ negation, quotation, historical references, and casual phrasing. Automated tests
 synthetic examples and mocked provider responses to check payloads, routing, and
 error handling. They do **not** establish semantic accuracy or clinical validity.
 
+### Labeled synthetic examples
+
+`examples/ambiguous_examples.json` begins a small labeled set of synthetic
+conversation examples for planned evaluation and comparison runs. Each entry has an
+identifier, the current message, ordered prior messages, a boolean draft label, and
+a neutral note explaining the label. The labels are draft annotations written by the
+authors, **not** ground truth or clinical judgments; the corresponding test checks
+only that the file matches this schema.
+
 ### Integration contract
 
 `SafetyEngine.evaluate` reads lock state first. An existing lock or a new signal returns `SHOW_RESOURCES_AND_RESTRICT_FLOW` and the resource text. The host application must implement any restriction, navigation, notification, audit, authentication, persistence, or escalation. Storage read and write exceptions propagate, including failed writes after a positive classifier result.
